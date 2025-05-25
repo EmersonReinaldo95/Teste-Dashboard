@@ -184,7 +184,7 @@ all_years = sorted(material_df['Ano'].dropna().unique())
 selected_years = st.sidebar.multiselect("📅 Selecione os Anos:", options=all_years, default=[])
 movimento_options = sorted(material_df['Descricao Movimento'].dropna().unique())
 default_movimento_str = {movimento_options[6]}
-default_movimento_index = 0
+default_movimento_index = 6
 if default_movimento_str in movimento_options: default_movimento_index = movimento_options.index(default_movimento_str)
 elif movimento_options: st.sidebar.warning(f"Tipo de movimento '{default_movimento_str}' encontrado. Usando '{movimento_options[6]}' como padrão.")
 selected_movimento_consumo = st.sidebar.selectbox("📉 Tipo de Movimento para Consumo:", options=movimento_options, index=default_movimento_index if movimento_options else 0)
