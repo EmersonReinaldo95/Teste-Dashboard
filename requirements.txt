@@ -3,3 +3,4 @@ pandas
 plotly # Esta linha é crucial para plotly.express
 reportlab
 kaleido
+xlsxwriter
