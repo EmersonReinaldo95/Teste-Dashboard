@@ -10,6 +10,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 import plotly.io as pio
+# import numpy as np # Não estritamente necessário com as modificações atuais
 
 MESES_PT_ORDENADOS = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -69,7 +70,7 @@ def preprocess_data(df_original):
         if col not in df.columns: 
             if col == 'Valor': df[col] = 0.0
             elif col == 'Nome Fornecedor': df[col] = 'N/A' 
-            else: df[col] = 'N/A'
+            else: df[col] = 'N/A' # Inclui 'Descricao Requisitante' e 'Descricao Classe'
     
     df = df.dropna(subset=['Desc. Insumo', 'Cód. Insumo', 'Descricao Movimento'])
     df['Desc. Insumo'] = df['Desc. Insumo'].astype(str); df['Cód. Insumo'] = df['Cód. Insumo'].astype(str)
@@ -106,21 +107,17 @@ def generate_pdf_report(
         if title: elements_for_keeptogether.extend([Paragraph(f"<b>{title}</b>", styles['h3']), Spacer(1, 0.1*inch)])
         if df.empty: elements_for_keeptogether.extend([Paragraph("Nenhum dado para exibir.", styles['Italic']), Spacer(1, 0.1*inch)]); story.append(KeepTogether(elements_for_keeptogether)); return
         
-        max_cols = 15 # Aumentado para acomodar a tabela pivotada de meses, se necessário.
+        max_cols = 15 
         df_display = df.copy()
         if isinstance(df_display.columns, pd.MultiIndex):
             df_display.columns = ['_'.join(map(str, col)).strip('_') for col in df_display.columns.values]
 
-        # Formatar valores numéricos como string para evitar problemas de precisão no PDF
         for col in df_display.columns:
             if pd.api.types.is_numeric_dtype(df_display[col]):
-                # Aplicar formatação específica se for uma das colunas de meses ou CONSUMO MEDIO
-                # Assumindo que as colunas de meses já estão formatadas como string (ex: "jan/25") ou são nomes ("Janeiro")
-                # e que a formatação visual é feita no Streamlit. Para PDF, apenas converter para string.
                 if col == 'CONSUMO MEDIO':
-                     df_display[col] = df_display[col].apply(lambda x: f"{x:,.1f}" if pd.notnull(x) else '0.0')
-                elif col not in ['CODIGO', 'DESCRICAO']: # Provavelmente uma coluna de mês
-                     df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else '0')
+                    df_display[col] = df_display[col].apply(lambda x: f"{x:,.1f}" if pd.notnull(x) else '0.0')
+                elif col not in ['CODIGO', 'DESCRICAO']: 
+                    df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else '0')
 
 
         if len(df_display.columns) > max_cols: 
@@ -151,7 +148,7 @@ def generate_pdf_report(
             img.hAlign = 'CENTER'
             elements_for_keeptogether.append(img)
         except Exception as e: 
-            error_msg = f"Erro renderizar gráfico '{title}' PDF: {e}"
+            error_msg = f"Erro renderizar gráfico '{title}' PDF: {str(e)}"
             st.sidebar.error(error_msg)
             elements_for_keeptogether.append(Paragraph(error_msg, styles['Italic']))
         
@@ -166,10 +163,8 @@ def generate_pdf_report(
 
     story.append(PageBreak()) 
     story.append(Paragraph("Análise Detalhada de Consumo Mensal", styles['h2']))
-    # O título da tabela no PDF pode ser o mesmo 'titulo_detalhado' usado no Streamlit, que é dinâmico.
     pdf_table_title = "Consumo Mensal Efetivo por Insumo"
     if consumo_mensal_detalhado_pdf_data is not None and not consumo_mensal_detalhado_pdf_data.empty:
-        # Se selected_years_pdf tem um único ano, podemos replicar o título com o ano.
         if len(selected_years_pdf) == 1:
             pdf_table_title = f"Consumo Mensal Efetivo por Insumo (Ano: {selected_years_pdf[0]})"
         elif len(selected_years_pdf) > 1:
@@ -177,7 +172,7 @@ def generate_pdf_report(
         df_to_table(consumo_mensal_detalhado_pdf_data, pdf_table_title)
     else:
         story.append(Paragraph("Dados de consumo mensal detalhado não disponíveis.", styles['Normal']))
-    fig_to_image_reportlab(fig_consumo_mensal_detalhado_obj, "Gráfico de Consumo Mensal Efetivo por Insumo") # O gráfico continua útil no formato longo original.
+    fig_to_image_reportlab(fig_consumo_mensal_detalhado_obj, "Gráfico de Consumo Mensal Efetivo por Insumo")
 
 
     story.append(PageBreak()) 
@@ -207,7 +202,6 @@ fig_consumo_anual_line = None; fig_consumo_mensal_bar = None; fig_media_geral_me
 fig_consumo_mensal_detalhado = None 
 consumo_anual_pivot_pdf = pd.DataFrame(); consumo_mensal_pivot_pdf = pd.DataFrame()
 media_geral_mensal_pdf = pd.DataFrame()
-# consumo_mensal_detalhado_pdf é agora df_para_exibir_pivotado, inicializado mais tarde.
 consumo_mensal_detalhado_pdf_display = pd.DataFrame() 
 material_para_analise_unidade_global = None
 codigo_insumo_para_unidade_global = "" 
@@ -228,7 +222,7 @@ selected_years = st.sidebar.multiselect("📅 Selecione os Anos:", options=all_y
 
 movimento_options = sorted(material_df['Descricao Movimento'].dropna().unique()) 
 default_movimento_index = 0 
-if len(movimento_options) > 6: default_movimento_index = 6
+if len(movimento_options) > 6: default_movimento_index = 6 # Exemplo de índice padrão
 elif movimento_options: default_movimento_index = 0
 selected_movimento_consumo = st.sidebar.selectbox("📉 Tipo de Movimento para Consumo:", options=movimento_options, index=default_movimento_index if movimento_options else 0)
 pdf_download_button_placeholder = st.sidebar.empty()
@@ -238,7 +232,7 @@ condition_cod = material_df['Cód. Insumo'].isin(selected_cod_insumos) if select
 if selected_desc_insumos and selected_cod_insumos: combined_insumo_condition = condition_desc | condition_cod
 elif selected_desc_insumos: combined_insumo_condition = condition_desc
 elif selected_cod_insumos: combined_insumo_condition = condition_cod
-else: combined_insumo_condition = pd.Series(True, index=material_df.index)
+else: combined_insumo_condition = pd.Series(True, index=material_df.index) # Nenhum filtro de insumo = todos os insumos
 condition_classe = pd.Series(True, index=material_df.index)
 if selected_classes and 'Descricao Classe' in material_df.columns: condition_classe = material_df['Descricao Classe'].isin(selected_classes)
 df_insumos_selecionados_base = material_df[combined_insumo_condition & condition_classe]
@@ -288,13 +282,13 @@ if proceed_with_analysis:
         try:
             consumo_anual_pivot_pdf = consumo_anual_por_material.pivot_table(index=['Cód. Insumo', 'Desc. Insumo'], columns='Ano', values='Consumo Total Anual', fill_value=0).reset_index()
             st.dataframe(consumo_anual_pivot_pdf.style.format({year: "{:,.0f}" for year in selected_years}), use_container_width=True)
-        except Exception as e: st.error(f"Erro ao criar tabela de consumo anual: {e}"); consumo_anual_pivot_pdf = pd.DataFrame()
+        except Exception as e: st.error(f"Erro ao criar tabela de consumo anual: {str(e)}"); consumo_anual_pivot_pdf = pd.DataFrame()
 
         st.subheader("Consumo Médio Mensal (agregado por ano, calculado sobre meses com consumo)")
         try:
             consumo_mensal_pivot_pdf = consumo_anual_por_material.pivot_table(index=['Cód. Insumo', 'Desc. Insumo'], columns='Ano', values='Consumo Médio Mensal (agregado)', fill_value=0).reset_index()
             st.dataframe(consumo_mensal_pivot_pdf.style.format({year: "{:,.1f}" for year in selected_years}), use_container_width=True)
-        except Exception as e: st.error(f"Erro ao criar tabela de consumo mensal agregada: {e}"); consumo_mensal_pivot_pdf = pd.DataFrame()
+        except Exception as e: st.error(f"Erro ao criar tabela de consumo mensal agregada: {str(e)}"); consumo_mensal_pivot_pdf = pd.DataFrame()
 
         if not consumo_anual_por_material.empty:
             fig_consumo_anual_line = px.line(consumo_anual_por_material, x='Ano', y='Consumo Total Anual', color='Desc. Insumo', markers=True, title='Tendência de Consumo Total Anual por Insumo', labels={'Desc. Insumo': 'Insumo'}, hover_data=['Cód. Insumo']); st.plotly_chart(fig_consumo_anual_line.update_layout(xaxis_type='category'), use_container_width=True)
@@ -318,9 +312,8 @@ if proceed_with_analysis:
         
         consumo_mensal_grafico_df = consumo_mensal_grafico_df.sort_values(by=['Cód. Insumo', 'Desc. Insumo', 'Mês Num'])
         
-        # --- MODIFICAÇÃO INÍCIO: Pivotagem da tabela de consumo mensal detalhado ---
         df_para_exibir_pivotado = pd.DataFrame()
-        final_month_col_names = [] # Para usar no format_dict
+        final_month_col_names = [] 
 
         if not consumo_mensal_grafico_df.empty:
             pivot_df = consumo_mensal_grafico_df.pivot_table(
@@ -331,11 +324,9 @@ if proceed_with_analysis:
             ).reset_index()
 
             pivot_df.rename(columns={'Cód. Insumo': 'CODIGO', 'Desc. Insumo': 'DESCRICAO'}, inplace=True)
-
             ordered_month_cols_orig = [mes for mes in MESES_PT_ORDENADOS if mes in pivot_df.columns]
-            
             mapa_nomes_meses_novo = {}
-            current_month_column_names = list(ordered_month_cols_orig) # Inicia com os nomes originais
+            current_month_column_names = list(ordered_month_cols_orig)
 
             if len(selected_years) == 1:
                 ano_selecionado_str = str(selected_years[0])
@@ -349,12 +340,10 @@ if proceed_with_analysis:
                 pivot_df.rename(columns=mapa_nomes_meses_novo, inplace=True)
                 current_month_column_names = temp_final_month_col_names
             
-            final_month_col_names = current_month_column_names # Nomes finais das colunas de meses para ordenação e formatação
+            final_month_col_names = current_month_column_names
             static_cols = ['CODIGO', 'DESCRICAO']
-            # Garante que apenas colunas existentes sejam usadas na reordenação
             cols_para_reordenar = static_cols + [col for col in final_month_col_names if col in pivot_df.columns]
             pivot_df = pivot_df[cols_para_reordenar]
-
 
             if len(selected_years) == 1:
                 ano_selecionado = selected_years[0]
@@ -366,17 +355,15 @@ if proceed_with_analysis:
                     'Desc. Insumo': 'DESCRICAO',
                     'Consumo Médio Mensal (agregado)': 'CONSUMO MEDIO'
                     }, inplace=True)
-                
                 df_para_exibir_pivotado = pd.merge(pivot_df, media_ref, on=['CODIGO', 'DESCRICAO'], how='left')
                 if 'CONSUMO MEDIO' in df_para_exibir_pivotado.columns:
-                     df_para_exibir_pivotado['CONSUMO MEDIO'] = df_para_exibir_pivotado['CONSUMO MEDIO'].fillna(0.0)
-                else: # Coluna não veio do merge
-                     df_para_exibir_pivotado['CONSUMO MEDIO'] = 0.0
+                    df_para_exibir_pivotado['CONSUMO MEDIO'] = df_para_exibir_pivotado['CONSUMO MEDIO'].fillna(0.0)
+                else: 
+                    df_para_exibir_pivotado['CONSUMO MEDIO'] = 0.0
             else: 
                 if final_month_col_names: 
                     pivot_df['Total Efetivo Agregado'] = pivot_df[final_month_col_names].sum(axis=1)
                     pivot_df['Nº Meses com Consumo Efetivo Agregado'] = (pivot_df[final_month_col_names] > 0).sum(axis=1)
-                    
                     pivot_df['CONSUMO MEDIO'] = pivot_df.apply(
                         lambda row: row['Total Efetivo Agregado'] / row['Nº Meses com Consumo Efetivo Agregado'] 
                                     if row['Nº Meses com Consumo Efetivo Agregado'] > 0 else 0,
@@ -389,9 +376,9 @@ if proceed_with_analysis:
                     df_para_exibir_pivotado = pivot_df.copy()
             
             if 'CONSUMO MEDIO' not in df_para_exibir_pivotado.columns:
-                 df_para_exibir_pivotado['CONSUMO MEDIO'] = 0.0
+                df_para_exibir_pivotado['CONSUMO MEDIO'] = 0.0
         
-        else: # consumo_mensal_grafico_df estava vazio
+        else: 
             base_cols = ['CODIGO', 'DESCRICAO']
             month_cols_for_empty_df = []
             if len(selected_years) == 1:
@@ -400,27 +387,25 @@ if proceed_with_analysis:
             else:
                 month_cols_for_empty_df = list(MESES_PT_ORDENADOS)
             
-            final_month_col_names = month_cols_for_empty_df # Para o format_dict
+            final_month_col_names = month_cols_for_empty_df
             df_para_exibir_pivotado = pd.DataFrame(columns=base_cols + month_cols_for_empty_df + ['CONSUMO MEDIO'])
             for col in df_para_exibir_pivotado.columns:
-                 if col not in base_cols:
-                      df_para_exibir_pivotado[col] = pd.Series(dtype='float64')
+                if col not in base_cols:
+                    df_para_exibir_pivotado[col] = pd.Series(dtype='float64')
         
-        consumo_mensal_detalhado_pdf_display = df_para_exibir_pivotado # Usar esta para PDF e Streamlit
+        consumo_mensal_detalhado_pdf_display = df_para_exibir_pivotado
         
         format_dict = {'CONSUMO MEDIO': "{:,.1f}"}
         for mes_col in final_month_col_names:
             if mes_col in df_para_exibir_pivotado.columns:
-                 format_dict[mes_col] = "{:,.0f}"
+                format_dict[mes_col] = "{:,.0f}"
         
         st.subheader("Tabela: " + titulo_detalhado)
         if not df_para_exibir_pivotado.empty:
             st.dataframe(df_para_exibir_pivotado.style.format(format_dict, na_rep='0'), use_container_width=True)
         else:
             st.info("Nenhum dado detalhado de consumo mensal para exibir no formato pivotado.")
-        # --- MODIFICAÇÃO FIM ---
 
-        # O gráfico continua usando consumo_mensal_grafico_df (formato longo)
         if not consumo_mensal_grafico_df.empty:
             fig_consumo_mensal_detalhado = px.line( 
                 consumo_mensal_grafico_df,
@@ -428,7 +413,7 @@ if proceed_with_analysis:
                 y='Quantidade',
                 color='Desc. Insumo',
                 markers=True,
-                title=titulo_detalhado, # Título do gráfico
+                title=titulo_detalhado,
                 labels={'Desc. Insumo': 'Insumo', 'Quantidade': 'Consumo Mensal', 'Mês Nome': 'Mês'},
                 hover_data=['Cód. Insumo'],
                 category_orders={"Mês Nome": MESES_PT_ORDENADOS} 
@@ -462,7 +447,7 @@ if proceed_with_analysis:
                         pass 
                 
                 if not style_applied: 
-                       st.dataframe(
+                    st.dataframe(
                         media_geral_mensal_pdf,
                         use_container_width=True,
                         height=dynamic_height
@@ -486,29 +471,137 @@ if proceed_with_analysis:
                     st.warning(f"Coluna '{col_valor_media_mensal_nome}' não encontrada para o gráfico de Média Geral Mensal.")
         
         st.markdown("---")
-        if 'Descricao Requisitante' in material_df.columns and material_df['Descricao Requisitante'].notna().any() and material_df['Descricao Requisitante'].nunique() > 1 :
-            st.header("🏥 Análise de Consumo por Unidade Requisitante"); 
-            material_para_analise_unidade_global = None 
-            codigo_insumo_para_unidade_global = ""      
-
-            if len(actual_selected_insumo_descriptions) > 1: 
-                material_para_analise_unidade_global = st.selectbox("Selecione UM insumo (por descrição) para analisar consumo por unidade:", options=actual_selected_insumo_descriptions, index=0)
-            elif len(actual_selected_insumo_descriptions) == 1: 
-                material_para_analise_unidade_global = actual_selected_insumo_descriptions[0]
+        # Verifica se a coluna 'Descricao Requisitante' existe e tem dados variados
+        if 'Descricao Requisitante' in material_df.columns and \
+           material_df['Descricao Requisitante'].notna().any() and \
+           material_df['Descricao Requisitante'].nunique() > 1:
             
-            if material_para_analise_unidade_global:
-                st.subheader(f"Consumo de '{material_para_analise_unidade_global}' por Unidade")
-                insumo_selecionado_df = material_df[material_df['Desc. Insumo'] == material_para_analise_unidade_global]
-                if not insumo_selecionado_df.empty:
-                    codigo_insumo_para_unidade_global = str(insumo_selecionado_df['Cód. Insumo'].iloc[0])
+            st.header("🏥 Análise de Consumo por Unidade Requisitante")
 
-                df_unidade_analise = analysis_df_materiais[(analysis_df_materiais['Desc. Insumo'] == material_para_analise_unidade_global) & (analysis_df_materiais['Descricao Requisitante'].notna()) & (analysis_df_materiais['Descricao Requisitante'] != 'N/A')]
-                if not df_unidade_analise.empty:
-                    consumo_total_anual_unidade_df = df_unidade_analise.groupby(
+            # --- CÓDIGO DA NOVA TABELA DETALHADA POR UNIDADE COMEÇA AQUI ---
+            st.subheader("Quantidade Total de Consumo por Ano (Agregado por Unidade e Insumo)")
+            st.caption("Esta tabela mostra o consumo total para os itens e filtros principais selecionados, distribuído por unidade requisitante. As unidades estão ordenadas pelo seu total consumido.")
+
+            # Verifica se o DataFrame principal da análise (analysis_df_materiais) não está vazio
+            if not analysis_df_materiais.empty:
+                # Filtra os dados para a nova tabela, removendo requisitantes N/A ou vazios/espaços em branco
+                df_for_new_table_source = analysis_df_materiais[
+                    analysis_df_materiais['Descricao Requisitante'].notna() &
+                    (analysis_df_materiais['Descricao Requisitante'] != 'N/A') &
+                    (analysis_df_materiais['Descricao Requisitante'].str.strip() != '') # Garante que não há strings que são apenas espaços
+                ].copy() # Usar .copy() para evitar SettingWithCopyWarning
+
+                # Verifica se há dados após a filtragem inicial das unidades
+                if not df_for_new_table_source.empty:
+                    try:
+                        # 1. Cria a tabela dinâmica: Itens como linhas, Unidades como colunas, Soma da Quantidade como valores
+                        pivot_unit_consumo_img = pd.pivot_table(
+                            df_for_new_table_source,
+                            index='Desc. Insumo',
+                            columns='Descricao Requisitante',
+                            values='Quantidade',
+                            aggfunc='sum',
+                            fill_value=0
+                        )
+
+                        # Verifica se a tabela dinâmica não está vazia
+                        if not pivot_unit_consumo_img.empty:
+                            # 2. Ordena as Unidades (colunas) pelo consumo total (descendente)
+                            unit_total_consumption_img = pivot_unit_consumo_img.sum(axis=0).sort_values(ascending=False)
+                            sorted_unit_columns_img = unit_total_consumption_img.index.tolist()
+                            
+                            # Filtra unidades para manter apenas aquelas com consumo total maior que zero
+                            sorted_unit_columns_img = [
+                                unit for unit in sorted_unit_columns_img if unit_total_consumption_img[unit] > 0
+                            ]
+
+                            # Prossegue apenas se houver unidades com consumo
+                            if sorted_unit_columns_img:
+                                pivot_unit_consumo_sorted_img = pivot_unit_consumo_img[sorted_unit_columns_img]
+
+                                # 3. Adiciona la coluna 'Total' (soma para cada item através das unidades ordenadas)
+                                pivot_unit_consumo_sorted_img['Total'] = pivot_unit_consumo_sorted_img[sorted_unit_columns_img].sum(axis=1)
+
+                                # 4. Prepara a linha 'Total' (soma das colunas para todos os itens)
+                                total_row_series_img = pivot_unit_consumo_sorted_img.sum(axis=0)
+                                total_row_series_img.name = 'Total' # Nome do índice para a linha total
+
+                                # Cria o DataFrame final para exibição, começando com os dados pivotados
+                                display_table_img = pivot_unit_consumo_sorted_img.reset_index()
+                                display_table_img.rename(columns={'Desc. Insumo': 'Descricao'}, inplace=True)
+
+                                # Cria a linha total como um DataFrame separado para concatenação
+                                total_row_df_img = pd.DataFrame(total_row_series_img).T
+                                total_row_df_img['Descricao'] = 'Total' # Define 'Descricao' como 'Total' para esta linha
+                                
+                                # Garante que as colunas da linha total estejam na mesma ordem que a tabela principal
+                                current_display_columns = display_table_img.columns.tolist()
+                                total_row_df_img = total_row_df_img[current_display_columns]
+                                
+                                # Concatena a tabela principal com a linha total
+                                final_display_table_img = pd.concat([display_table_img, total_row_df_img], ignore_index=True)
+                                
+                                # Define a formatação para as colunas numéricas
+                                numeric_cols_img = [col for col in final_display_table_img.columns if col != 'Descricao']
+                                format_dict_new_table_img = {col: "{:,.0f}" for col in numeric_cols_img}
+                                
+                                # Exibe a tabela formatada
+                                st.dataframe(final_display_table_img.style.format(format_dict_new_table_img, na_rep='0'), use_container_width=True)
+                            else:
+                                st.info("Nenhuma unidade com consumo significativo encontrado para os itens e filtros selecionados para gerar a tabela de visão geral por unidade.")
+                        else:
+                            st.info("Não foi possível gerar a tabela de consumo agregado por unidade e insumo (a tabela dinâmica resultou vazia ou sem dados significativos).")
+                    except Exception as e:
+                        st.error(f"Ocorreu um erro ao gerar a tabela de consumo agregado por unidade: {str(e)}")
+                else:
+                    st.info("Nenhum dado de consumo por unidade encontrado (após remover N/A ou unidades vazias) para os filtros aplicados para gerar a tabela de visão geral.")
+            else:
+                st.info("Os dados de análise principal estão vazios. Não é possível gerar a tabela de consumo por unidade.")
+            
+            st.markdown("---") # Separador visual
+            # --- CÓDIGO DA NOVA TABELA DETALHADA POR UNIDADE TERMINA AQUI ---
+
+            # Lógica existente para selecionar UM insumo para análise detalhada por unidade continua abaixo
+            material_para_analise_unidade_global = None
+            codigo_insumo_para_unidade_global = ""
+
+            # Usa actual_selected_insumo_descriptions que já foi filtrado no início da análise principal
+            if actual_selected_insumo_descriptions: # Verifica se a lista não está vazia
+                if len(actual_selected_insumo_descriptions) > 1:
+                    material_para_analise_unidade_global = st.selectbox(
+                        "Selecione UM insumo (por descrição) para analisar consumo detalhado por unidade:",
+                        options=actual_selected_insumo_descriptions,
+                        index=0,
+                        key="select_insumo_unidade_detalhe_v2" # Chave única para o widget
+                    )
+                elif len(actual_selected_insumo_descriptions) == 1:
+                    material_para_analise_unidade_global = actual_selected_insumo_descriptions[0]
+                    st.markdown(f"Analisando consumo detalhado por unidade para o único insumo selecionado: **{material_para_analise_unidade_global}**")
+                # Se for 0, material_para_analise_unidade_global permanece None e a lógica abaixo não é executada
+            else:
+                 st.info("Nenhum insumo selecionado ou disponível para análise detalhada por unidade.")
+
+
+            if material_para_analise_unidade_global:
+                st.subheader(f"Consumo de '{material_para_analise_unidade_global}' por Unidade (Detalhado)")
+                insumo_selecionado_df_para_unidade = material_df[material_df['Desc. Insumo'] == material_para_analise_unidade_global]
+                if not insumo_selecionado_df_para_unidade.empty:
+                    codigo_insumo_para_unidade_global = str(insumo_selecionado_df_para_unidade['Cód. Insumo'].iloc[0])
+
+                # Filtra analysis_df_materiais para o insumo específico E unidades válidas
+                df_unidade_analise_detalhada = analysis_df_materiais[
+                    (analysis_df_materiais['Desc. Insumo'] == material_para_analise_unidade_global) &
+                    (analysis_df_materiais['Descricao Requisitante'].notna()) &
+                    (analysis_df_materiais['Descricao Requisitante'] != 'N/A') &
+                    (analysis_df_materiais['Descricao Requisitante'].str.strip() != '')
+                ]
+
+                if not df_unidade_analise_detalhada.empty:
+                    consumo_total_anual_unidade_df = df_unidade_analise_detalhada.groupby(
                         ['Descricao Requisitante', 'Ano']
                     )['Quantidade'].sum().reset_index()
 
-                    meses_com_consumo_unidade_df = df_unidade_analise[df_unidade_analise['Quantidade'] > 0].groupby(
+                    meses_com_consumo_unidade_df = df_unidade_analise_detalhada[df_unidade_analise_detalhada['Quantidade'] > 0].groupby(
                         ['Descricao Requisitante', 'Ano']
                     )['Mês Num'].nunique().reset_index()
                     meses_com_consumo_unidade_df.rename(columns={'Mês Num': 'Nº Meses com Consumo Unidade'}, inplace=True)
@@ -538,9 +631,16 @@ if proceed_with_analysis:
                     st.caption(f"Detalhe: Média Mensal por Unidade/Ano para '{material_para_analise_unidade_global}' (calculado sobre meses com consumo)");
                     pivot_unidade_ano_media_mensal_pdf = consumo_unidade_ano.pivot_table(index='Descricao Requisitante', columns='Ano', values='Média Mensal por Unidade', fill_value=0).reset_index(); 
                     st.dataframe(pivot_unidade_ano_media_mensal_pdf.style.format({year: "{:,.1f}" for year in selected_years}), height=300, use_container_width=True) 
-                else: st.info(f"Nenhum dado de consumo para '{material_para_analise_unidade_global}' nas unidades e anos selecionados.")
-        else: st.info("Análise por unidade desabilitada (coluna 'Descricao Requisitante' ausente/inválida ou com poucas unidades).")
+                else: 
+                    st.info(f"Nenhum dado de consumo detalhado para '{material_para_analise_unidade_global}' nas unidades e anos selecionados.")
         
+        else: # Caso 'Descricao Requisitante' não esteja disponível ou não tenha variedade suficiente
+            if 'Descricao Requisitante' not in material_df.columns:
+                 st.warning("A coluna 'Descricao Requisitante' não foi encontrada nos dados. A análise por unidade requisitante não está disponível.")
+            # else: # Removido para não duplicar mensagem se apenas 1 unidade única, o que já não passaria no nunique() > 1
+            #      st.info("Não há dados suficientes ou variedade na coluna 'Descricao Requisitante' para realizar a análise por unidade.")
+
+
         if not analysis_df_materiais.empty:
             pdf_bytes = generate_pdf_report(
                 actual_selected_insumo_descriptions, selected_cod_insumos, selected_years, 
@@ -548,10 +648,10 @@ if proceed_with_analysis:
                 consumo_anual_pivot_pdf, consumo_mensal_pivot_pdf, 
                 fig_consumo_anual_line, fig_consumo_mensal_bar, 
                 media_geral_mensal_pdf, 
-                consumo_mensal_detalhado_pdf_display, # Passa a tabela pivotada para o PDF
-                fig_consumo_mensal_detalhado,       
+                consumo_mensal_detalhado_pdf_display,
+                fig_consumo_mensal_detalhado,     
                 material_para_analise_unidade_global, 
-                codigo_insumo_para_unidade_global,   
+                codigo_insumo_para_unidade_global,  
                 media_mensal_por_unidade_pdf, 
                 fig_unidade_media, 
                 pivot_unidade_ano_media_mensal_pdf
