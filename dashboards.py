@@ -313,10 +313,10 @@ if proceed_with_analysis:
         )
         consumo_anual_por_material['Nº Meses com Consumo'] = consumo_anual_por_material['Nº Meses com Consumo'].fillna(0)
         
-        consumo_anual_por_material['Consumo Médio Mensal'] = consumo_anual_por_material.apply(
-    lambda row: row['Quantidade'] / row['Nº Meses com Consumo'] if row['Nº Meses com Consumo'] > 0 else 0,
-    axis=1
-)
+        consumo_anual_por_material['Consumo Médio Mensal (agregado)'] = consumo_anual_por_material.apply(
+            lambda row: row['Consumo Total Anual'] / row['Nº Meses com Consumo'] if row['Nº Meses com Consumo'] > 0 else 0,
+            axis=1
+        )
         consumo_anual_por_material = consumo_anual_por_material.sort_values(by=['Cód. Insumo', 'Desc. Insumo', 'Ano'])
         
         st.subheader("Consumo Total Anual")
