@@ -31,38 +31,6 @@ def df_to_excel_bytes(df_to_export):
     return processed_data
 
 st.set_page_config(layout="wide", page_title="Dashboard de Consumo com PDF")
-# FUNÇÃO PARA CARREGAR DADOS DE ESTOQUE
-@st.cache_data
-def load_stock_data():
-    try:
-        df = pd.read_csv("estoqueatual.csv", sep=';', encoding='utf-8')
-    except UnicodeDecodeError:
-        df = pd.read_csv("estoqueatual.csv", sep=';', encoding='latin1')
-    except FileNotFoundError:
-        st.sidebar.warning("Arquivo 'estoqueatual.csv' não encontrado! A análise de estoque não será exibida.")
-        return pd.DataFrame()
-    except Exception as e:
-        st.sidebar.error(f"Erro ao ler CSV de estoque: {e}")
-        return pd.DataFrame()
-
-    # Validação e preparação das colunas
-    if "Insumo" not in df.columns or "Quantidade" not in df.columns:
-        st.sidebar.error("O arquivo 'estoqueatual.csv' deve conter as colunas 'Insumo' e 'Quantidade'.")
-        return pd.DataFrame()
-    
-    # Garante que a chave de junção é do tipo string
-    df['Insumo'] = df['Insumo'].astype(str)
-    
-    # Converte a coluna "Quantidade" para numérico
-    df['Quantidade'] = pd.to_numeric(df['Quantidade'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False), errors='coerce').fillna(0)
-    df['Quantidade'] = df['Quantidade'].apply(lambda x: x if x > 0 else 0)
-
-    # Renomeia "Quantidade" para "Estoque Atual" para o resto do script funcionar
-    df.rename(columns={'Quantidade': 'Estoque Atual'}, inplace=True)
-
-    # Retorna apenas as colunas necessárias
-    return df[['Insumo', 'Estoque Atual']]
-
 
 @st.cache_data
 def load_data():
@@ -234,7 +202,6 @@ def generate_pdf_report(
 # --- Carregar e pré-processar os dados ---
 raw_df = load_data()
 material_df = preprocess_data(raw_df) 
-df_estoque = load_stock_data() # ADICIONE ESTA LINHA
 
 # --- Interface do Dashboard ---
 st.title("📊 Dashboard Avançado de Análise de Consumo")
@@ -492,89 +459,59 @@ if proceed_with_analysis:
             fig_consumo_mensal_detalhado = None 
         
         st.markdown("---")
-       # COLE O NOVO BLOCO DE CÓDIGO AQUI
+        if len(selected_years) > 0 and not consumo_anual_por_material.empty :
+            media_geral_mensal_pdf = consumo_anual_por_material.groupby(['Cód. Insumo', 'Desc. Insumo'])['Consumo Médio Mensal (agregado)'].mean().reset_index()
+            media_geral_mensal_pdf.rename(columns={'Consumo Médio Mensal (agregado)': f'Média Geral Mensal ({len(selected_years)}a)'}, inplace=True)
+            
+            st.subheader(f"⚖️ Média Geral Mensal de Consumo por Insumo (sobre Anos Selecionados)")
+            st.caption("Média Geral Mensal (baseada na média do consumo anual / nº meses com consumo)")
 
-    st.markdown("---")
-    
-    # A partir daqui começa a nova lógica
-    media_geral_mensal = consumo_anual_por_material.groupby(['Cód. Insumo', 'Desc. Insumo'])['Consumo Médio Mensal'].mean().reset_index()
-    col_media_consumo_nome = f'Média Geral Mensal ({len(selected_years)}a)'
-    media_geral_mensal.rename(columns={'Consumo Médio Mensal': col_media_consumo_nome}, inplace=True)
-    
-    st.header("📊 Análise de Cobertura e Status do Estoque")
-
-    if not df_estoque.empty:
-        st.sidebar.header("⚙️ Parâmetros de Estoque")
-        critical_threshold = st.sidebar.number_input("Estoque Crítico (meses) <=", min_value=0.5, max_value=5.0, value=1.5, step=0.5)
-        warning_threshold = st.sidebar.number_input("Alerta de Estoque (meses) <=", min_value=1.0, max_value=10.0, value=3.0, step=0.5)
-        target_coverage = st.sidebar.number_input("Cobertura Ideal (meses)", min_value=2.0, max_value=24.0, value=6.0, step=1.0)
-        
-        st.caption(f"Status: Crítico <= {critical_threshold} meses | Alerta <= {warning_threshold} meses | Saudável > {warning_threshold} meses")
-
-        df_estoque.rename(columns={'Insumo': 'Cód. Insumo'}, inplace=True)
-        df_analise_estoque = pd.merge(media_geral_mensal, df_estoque, on='Cód. Insumo', how='left')
-        df_analise_estoque['Estoque Atual'].fillna(0, inplace=True)
-
-        def calcular_cobertura(row):
-            media_consumo = row[col_media_consumo_nome]
-            if media_consumo > 0:
-                return row['Estoque Atual'] / media_consumo
-            return float('inf')
-
-        df_analise_estoque['Cobertura (Meses)'] = df_analise_estoque.apply(calcular_cobertura, axis=1)
-
-        def definir_status(cobertura):
-            if cobertura <= critical_threshold:
-                return "Crítico"
-            elif cobertura <= warning_threshold:
-                return "Alerta"
+            if not media_geral_mensal_pdf.empty:
+                col_name_to_format = f'Média Geral Mensal ({len(selected_years)}a)'
+                dynamic_height = (len(media_geral_mensal_pdf) + 1) * 35 + 3 
+                
+                style_applied = False
+                if col_name_to_format in media_geral_mensal_pdf.columns:
+                    try:
+                        st.dataframe(
+                            media_geral_mensal_pdf.style.format({col_name_to_format: "{:,.1f}"}),
+                            use_container_width=True,
+                            height=dynamic_height
+                        )
+                        style_applied = True
+                    except Exception: 
+                        pass 
+                
+                if not style_applied: 
+                    st.dataframe(
+                        media_geral_mensal_pdf,
+                        use_container_width=True,
+                        height=dynamic_height
+                    )
+                
+                excel_data_mgm = df_to_excel_bytes(media_geral_mensal_pdf)
+                st.download_button(
+                    label="📥 Exportar Média Geral Mensal para Excel",
+                    data=excel_data_mgm,
+                    file_name="media_geral_mensal.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
             else:
-                return "Saudável"
-            
-        df_analise_estoque['Status'] = df_analise_estoque['Cobertura (Meses)'].apply(definir_status)
-        
-        def calcular_pedido(row):
-            estoque_ideal = row[col_media_consumo_nome] * target_coverage
-            qtd_a_pedir = estoque_ideal - row['Estoque Atual']
-            
-            if qtd_a_pedir > 0 and row['Status'] != 'Saudável':
-                return round(qtd_a_pedir, 0)
-            return 0
+                st.info("Não há dados de média geral mensal para exibir.")
 
-        df_analise_estoque['Qtd. Sugerida p/ Pedido'] = df_analise_estoque.apply(calcular_pedido, axis=1)
-
-        df_display_estoque = df_analise_estoque[[
-            'Cód. Insumo', 'Desc. Insumo', col_media_consumo_nome, 
-            'Estoque Atual', 'Cobertura (Meses)', 'Status', 'Qtd. Sugerida p/ Pedido'
-        ]]
-
-        format_dict_estoque = {
-            col_media_consumo_nome: "{:,.1f}",
-            'Estoque Atual': "{:,.0f}",
-            'Cobertura (Meses)': lambda x: f"{x:,.1f}" if x != float('inf') else "N/A (sem consumo)",
-            'Qtd. Sugerida p/ Pedido': "{:,.0f}"
-        }
-
-        st.dataframe(df_display_estoque.style.format(format_dict_estoque), use_container_width=True)
-        
-        excel_data_estoque = df_to_excel_bytes(df_display_estoque)
-        st.download_button(
-            label="📥 Exportar Análise de Estoque para Excel",
-            data=excel_data_estoque,
-            file_name="analise_cobertura_estoque.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    else:
-        st.subheader("⚖️ Média Geral Mensal de Consumo")
-        st.caption("Arquivo 'estoqueatual.csv' não encontrado. Exibindo apenas a média de consumo.")
-        st.dataframe(media_geral_mensal.style.format({col_media_consumo_nome: "{:,.1f}"}), use_container_width=True)
-        excel_data_media = df_to_excel_bytes(media_geral_mensal)
-        st.download_button(
-            label="📥 Exportar Média de Consumo para Excel",
-            data=excel_data_media,
-            file_name="media_geral_consumo.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+            if not media_geral_mensal_pdf.empty:
+                col_valor_media_mensal_nome = f'Média Geral Mensal ({len(selected_years)}a)'
+                if col_valor_media_mensal_nome in media_geral_mensal_pdf.columns:
+                    fig_media_geral_mensal_grafico = px.bar(media_geral_mensal_pdf, 
+                                                            x='Desc. Insumo', 
+                                                            y=col_valor_media_mensal_nome, 
+                                                            color='Desc. Insumo', 
+                                                            title='Média Geral do Consumo Mensal por Insumo (calculado sobre meses com consumo)', 
+                                                            labels={'Desc. Insumo': 'Insumo', col_valor_media_mensal_nome: 'Média Mensal'}, 
+                                                            hover_data=['Cód. Insumo'])
+                    st.plotly_chart(fig_media_geral_mensal_grafico, use_container_width=True)
+                else:
+                    st.warning(f"Coluna '{col_valor_media_mensal_nome}' não encontrada para o gráfico de Média Geral Mensal.")
         
         st.markdown("---")
         if 'Descricao Requisitante' in material_df.columns and \
